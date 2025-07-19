@@ -9,7 +9,7 @@ import os
 import asyncio
 import threading
 from flask import Flask, request, jsonify, render_template
-from ai_research_agent_fallback import AIResearchAgentFallback as AIResearchAgent
+from agent import Agent
 import logging
 from dotenv import load_dotenv
 
@@ -50,14 +50,14 @@ def start_research():
                     active_researches[session_id]['progress'] = 10
                     
                     # Create AI research agent
-                    agent = AIResearchAgent()
+                    agent = Agent()
                     
                     # Update progress during research
                     active_researches[session_id]['progress'] = 30
                     active_researches[session_id]['current_step'] = 'Planning research strategy'
                     
                     # Conduct AI-powered research
-                    result = await agent.conduct_research(query)
+                    result = await agent.research(query)
                     
                     active_researches[session_id]['progress'] = 100
                     active_researches[session_id]['status'] = 'completed'

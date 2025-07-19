@@ -15,8 +15,10 @@ def test_flask_app():
     
     # Test data
     test_query = "Biblical creation narrative"
-    base_url = "http://localhost:5022"
+    base_url = "http://localhost:5026"
     
+    time.sleep(5)
+
     try:
         # Start research
         print(f"📋 Starting research for: {test_query}")

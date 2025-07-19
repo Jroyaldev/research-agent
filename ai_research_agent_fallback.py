@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import requests
 from tools import web_search, save_note
-from podcast_web_search import BiblicalPodcastWebSearcher
+from podcast_search import NewPodcastSearcher
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -48,7 +48,7 @@ class AIResearchAgentFallback:
             logger.info("Using fallback research logic (no AI API)")
         
         # Initialize podcast searcher
-        self.podcast_searcher = BiblicalPodcastWebSearcher()
+        self.podcast_searcher = NewPodcastSearcher()
     
     def _check_moonshot_availability(self) -> bool:
         """Check if Moonshot API is available"""
@@ -754,27 +754,26 @@ class AIResearchAgentFallback:
         """Execute podcast search for biblical content"""
         
         query = parameters.get("query", context.query)
-        max_results = parameters.get("max_results", 8)
         
         try:
             logger.info(f"Searching biblical podcasts for: {query}")
             
             # Search for podcast episodes
-            episodes = await self.podcast_searcher.search_podcasts(query, max_results)
+            episodes = self.podcast_searcher.search_all(query)
             
             # Convert episodes to sources format
             podcast_sources = []
             for episode in episodes:
                 source = {
-                    "title": episode.title,
-                    "url": episode.url,
-                    "description": episode.description,
+                    "title": episode['title'],
+                    "url": episode['url'],
+                    "description": episode['summary'],
                     "search_query": query,
                     "added_at": datetime.now().isoformat(),
                     "source_type": "podcast",
-                    "podcast_name": episode.podcast_name,
-                    "relevance_score": episode.relevance_score,
-                    "credibility_score": self._assess_podcast_credibility(episode)
+                    "podcast_name": episode['podcast_name'],
+                    "relevance_score": 0, # Add a relevance score
+                    "credibility_score": 0 # Add a credibility score
                 }
                 podcast_sources.append(source)
             

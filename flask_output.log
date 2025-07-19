@@ -1,0 +1,7 @@
+INFO:__main__:Starting AI Research Agent server on port 5026
+INFO:__main__:Moonshot API configured: False
+INFO:__main__:Brave API configured: False
+ * Serving Flask app 'app_agents'
+ * Debug mode: off
+Address already in use
+Port 5026 is in use by another program. Either identify and stop that program, or start the server with a different port.
