@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research AI Agent</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-brain"></i>
+                    <h1>Research AI</h1>
+                </div>
+                <div class="subtitle">
+                    <p>Advanced research powered by Moonshot AI</p>
+                </div>
+            </div>
+        </header>
+
+        <main class="main">
+            <div class="research-form">
+                <div class="input-section">
+                    <label for="research-query" class="input-label">
+                        <i class="fas fa-search"></i>
+                        What would you like to research?
+                    </label>
+                    <textarea 
+                        id="research-query" 
+                        placeholder="Ask any research question... e.g., 'What are the latest developments in quantum computing?'"
+                        rows="3"
+                    ></textarea>
+                    <div class="input-actions">
+                        <button id="clear-btn" class="btn btn-secondary">
+                            <i class="fas fa-eraser"></i>
+                            Clear
+                        </button>
+                        <button id="research-btn" class="btn btn-primary">
+                            <i class="fas fa-play"></i>
+                            Start Research
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="research-status" class="research-status hidden">
+                <div class="status-card">
+                    <div class="status-header">
+                        <div class="status-indicator">
+                            <div class="spinner"></div>
+                            <span class="status-text">Researching...</span>
+                        </div>
+                        <div class="timer">
+                            <i class="fas fa-clock"></i>
+                            <span id="elapsed-time">0s</span>
+                        </div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <div class="research-details">
+                        <p><strong>Query:</strong> <span id="current-query"></span></p>
+                        <p><em>Our AI is searching the web and analyzing information...</em></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="research-result" class="research-result hidden">
+                <div class="result-card">
+                    <div class="result-header">
+                        <h3><i class="fas fa-lightbulb"></i> Research Results</h3>
+                        <button id="copy-btn" class="btn btn-copy">
+                            <i class="fas fa-copy"></i>
+                            Copy
+                        </button>
+                    </div>
+                    <div class="result-content">
+                        <div id="result-text" class="markdown-content"></div>
+                    </div>
+                    <div class="result-actions">
+                        <button id="new-research-btn" class="btn btn-primary">
+                            <i class="fas fa-plus"></i>
+                            New Research
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="error-message" class="error-message hidden">
+                <div class="error-card">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div class="error-content">
+                        <h4>Research Error</h4>
+                        <p id="error-text"></p>
+                    </div>
+                    <button id="retry-btn" class="btn btn-secondary">Try Again</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>Powered by Moonshot AI & Brave Search</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

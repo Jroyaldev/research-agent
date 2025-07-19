@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(python:*)",
+      "Bash(mkdir:*)",
+      "Bash(curl:*)",
+      "Bash(-H \"Content-Type: application/json\" )",
+      "Bash(-d '{\"\"query\"\": \"\"Genesis 1 ANE cosmology\"\", \"\"research_type\"\": \"\"biblical_exegesis\"\"}')",
+      "Bash(. venv/bin/activate)",
+      "Bash(find:*)",
+      "Bash(cp:*)",
+      "Bash(pkill:*)"
+    ],
+    "deny": []
+  }
+}
