@@ -357,19 +357,8 @@ class ResearchApp {
     }
     
     renderMarkdown(text) {
-        // Basic markdown to HTML conversion
-        let html = text
-            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>')
-            .replace(/`(.*?)`/g, '<code>$1</code>')
-            .replace(/\n\n/g, '</p><p>')
-            .replace(/^(.+)$/gm, '<p>$1</p>');
-        
-        return html;
+        // Use Marked.js for reliable Markdown rendering
+        return marked.parse(text);
     }
 }
 

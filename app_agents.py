@@ -9,7 +9,7 @@ import os
 import asyncio
 import threading
 from flask import Flask, request, jsonify, render_template
-from agent import Agent
+from enhanced_autonomous_researcher import EnhancedAutonomousResearchAgent, ResearchGoal
 import logging
 from dotenv import load_dotenv
 
@@ -49,27 +49,30 @@ def start_research():
                     active_researches[session_id]['query'] = query
                     active_researches[session_id]['progress'] = 10
                     
-                    # Create AI research agent
-                    agent = Agent()
+                    # Create enhanced agent with validation
+                    agent = EnhancedAutonomousResearchAgent()
+                    goal = ResearchGoal(
+                        topic=query,
+                        research_mandate="Provide a comprehensive analysis that includes multiple scholarly perspectives, historical context, and contemporary applications.",
+                        quality_threshold=0.7,
+                        max_sources=12,
+                        min_sources=3,
+                        enable_validation=True
+                    )
                     
-                    # Update progress during research
-                    active_researches[session_id]['progress'] = 30
-                    active_researches[session_id]['current_step'] = 'Planning research strategy'
+                    # Store context for progress tracking
+                    active_researches[session_id]['context'] = None
                     
-                    # Conduct AI-powered research
-                    result = await agent.research(query)
+                    # Conduct research using the enhanced agent
+                    result = await agent.conduct_research(goal)
                     
-                    active_researches[session_id]['progress'] = 100
+                    # Store results
                     active_researches[session_id]['status'] = 'completed'
-                    active_researches[session_id]['result'] = result
-                    active_researches[session_id]['final_report'] = result['final_report']
-                    active_researches[session_id]['sources'] = result.get('sources_found', 0)
+                    active_researches[session_id]['final_report'] = result.get('final_report', 'No report generated.')
+                    active_researches[session_id]['sources'] = len(result.get('context', {}).sources or [])
                     active_researches[session_id]['quality_score'] = result.get('quality_score', 0.0)
-                    active_researches[session_id]['is_biblical_query'] = result.get('is_biblical_query', False)
-                    active_researches[session_id]['podcast_episodes_found'] = result.get('podcast_episodes_found', 0)
-                    active_researches[session_id]['sources_data'] = result.get('sources', [])
-                    active_researches[session_id]['insights'] = result.get('insights', {})
-                    active_researches[session_id]['completed_steps'] = result.get('completed_steps', [])
+                    active_researches[session_id]['context'] = result.get('context')
+                    active_researches[session_id]['iterations'] = result.get('iterations', 0)
                     
                     logger.info(f"AI research completed for session {session_id}")
                     
@@ -109,14 +112,33 @@ def get_research_status(session_id):
     if not research:
         return jsonify({'error': 'Session not found'}), 404
     
-    # Add real-time agent activity simulation for UI
-    if research.get('status') == 'running':
+    # Calculate real progress if agent context is available
+    if research.get('status') == 'running' and 'context' in research and research['context']:
+        context = research['context']
+        
+        # Calculate progress based on completion criteria
+        total_criteria = len(context.goal.completion_criteria)
+        completed_criteria = len(context.completed_criteria)
+        progress = (completed_criteria / total_criteria) * 100 if total_criteria > 0 else 0
+        
+        # Ensure progress doesn't exceed 95% until completion
+        progress = min(progress, 95)
+        
+        # Display the last action as the current step
+        current_step = 'Initializing research...'
+        if context.action_history:
+            current_step = context.action_history[-1].replace('_', ' ').title()
+        
+        research['progress'] = progress
+        research['current_step'] = current_step
+        
+        # Real agent activity
         research['agents'] = [
             {
-                'agent': 'research_coordinator',
-                'name': 'AI Research Coordinator',
+                'agent': 'autonomous_researcher',
+                'name': 'Autonomous Research Agent',
                 'status': 'active',
-                'message': research.get('current_step', 'Analyzing research requirements'),
+                'message': current_step,
                 'icon': '🧠',
                 'color': '#4F46E5',
                 'timestamp': time.time() * 1000

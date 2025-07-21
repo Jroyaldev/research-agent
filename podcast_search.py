@@ -7,7 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 import logging
 import os
-from podcastindex.podcastindex import PodcastIndex
+import podcastindex
 import time
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ class NewPodcastSearcher:
             "api_key": os.environ.get("PODCAST_INDEX_API_KEY"),
             "api_secret": os.environ.get("PODCAST_INDEX_API_SECRET")
         }
-        self.podcast_index = PodcastIndex(config)
+        self.podcast_index = podcastindex.init(config)
         self.feed_cache = {}
         self.cache_ttl = 3600  # 1 hour
 
