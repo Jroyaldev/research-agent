@@ -8,6 +8,7 @@ import time
 from urllib.parse import quote_plus
 import re
 from datetime import datetime
+from bs4 import BeautifulSoup
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -253,6 +254,120 @@ def health_check() -> Dict[str, Any]:
     
     return health_status
 
+@retry_on_failure(max_retries=3)
+def fetch_content(url: str) -> str:
+    """Fetch and extract main content from a web page"""
+    try:
+        # Validate URL
+        if not url or not url.startswith(('http://', 'https://')):
+            return "Error: Invalid URL format"
+            
+        logger.info(f"Fetching content from: {url}")
+        
+        # Make request with timeout
+        response = requests.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            timeout=15.0
+        )
+        response.raise_for_status()
+        
+        # Parse HTML
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+            
+        # Extract main content - try common content containers
+        content_selectors = [
+            'article', 'main', '.content', '#content', '.post-content',
+            '.entry-content', '.article-body', '.story-body'
+        ]
+        
+        content = ""
+        for selector in content_selectors:
+            elements = soup.select(selector)
+            if elements:
+                content = ' '.join([elem.get_text(strip=True) for elem in elements])
+                if len(content) > 200:  # Found substantial content
+                    break
+                    
+        # Fallback to body if no specific container found
+        if not content:
+            body = soup.find('body')
+            if body:
+                content = body.get_text(strip=True)
+        
+        # Clean up content
+        content = re.sub(r'\s+', ' ', content)  # Normalize whitespace
+        content = content.strip()
+        
+        # Limit content size
+        if len(content) > 5000:
+            content = content[:5000] + "... [content truncated]"
+            
+        if len(content) < 50:
+            return f"Error: Could not extract sufficient content from {url}"
+            
+        return content
+        
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching content: {str(e)}"
+    except Exception as e:
+        logger.error(f"Unexpected error in fetch_content: {str(e)}")
+        return f"Error processing content: {str(e)}"
+
+@retry_on_failure(max_retries=3)
+def validate_url(url: str) -> Dict[str, Any]:
+    """Validate that a URL is accessible and returns valid content"""
+    try:
+        if not url or not url.startswith(('http://', 'https://')):
+            return {
+                "accessible": False,
+                "status_code": None,
+                "error": "Invalid URL format",
+                "content_type": None
+            }
+            
+        logger.info(f"Validating URL: {url}")
+        
+        response = requests.head(
+            url,
+            headers={"User-Agent": "Research-Agent/1.0"},
+            timeout=10.0,
+            allow_redirects=True
+        )
+        
+        # If HEAD fails, try GET
+        if response.status_code >= 400:
+            response = requests.get(
+                url,
+                headers={"User-Agent": "Research-Agent/1.0"},
+                timeout=10.0,
+                stream=True
+            )
+            
+        content_type = response.headers.get('content-type', '').lower()
+        
+        return {
+            "accessible": response.status_code < 400,
+            "status_code": response.status_code,
+            "error": None,
+            "content_type": content_type,
+            "final_url": response.url
+        }
+        
+    except Exception as e:
+        return {
+            "accessible": False,
+            "status_code": None,
+            "error": str(e),
+            "content_type": None
+        }
+
 # JSON schema expected by Moonshot AI
 TOOLS = [
     {
@@ -312,6 +427,42 @@ TOOLS = [
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_content",
+            "description": "Fetch and extract the main content from a web page for analysis",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL of the web page to fetch content from",
+                        "format": "uri"
+                    }
+                },
+                "required": ["url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "validate_url",
+            "description": "Validate that a URL is accessible and returns valid content",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to validate",
+                        "format": "uri"
+                    }
+                },
+                "required": ["url"]
             }
         }
     }
