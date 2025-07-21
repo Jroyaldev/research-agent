@@ -15,6 +15,7 @@ import requests
 from bs4 import BeautifulSoup
 from task_graph import TaskPlanner, ResearchGraph, Task
 from validation_tools import CitationValidator, hallucination_check
+from podcast_search import NewPodcastSearcher
 
 @dataclass
 class ResearchGoal:
@@ -64,14 +65,27 @@ class ResearchContext:
             self.completed_criteria = []
         if self.action_history is None:
             self.action_history = []
+            
+    def add_action(self, action: str):
+        """Add an action to the action history"""
+        self.action_history.append(action)
+        
+    def can_perform_action(self, action: str) -> bool:
+        """Check if an action can be performed"""
+        # Prevent too many of the same action in a row
+        if len(self.action_history) >= self.max_same_action_attempts:
+            recent_actions = self.action_history[-self.max_same_action_attempts:]
+            if recent_actions.count(action) >= self.max_same_action_attempts:
+                return False
+        return True
 
 class EnhancedAutonomousResearchAgent:
     """Enhanced agent with task graph and validation capabilities"""
     
     def __init__(self):
+        self.podcast_searcher = NewPodcastSearcher()
         self.tools = {
             'web_search': self._web_search,
-            'pdf_search': self._pdf_search,
             'podcast_search': self._podcast_search,
             'extract_citations': self._extract_citations,
             'validate_source': self._validate_source,
@@ -293,50 +307,81 @@ class EnhancedAutonomousResearchAgent:
     
     # Tool implementations (enhanced versions)
     async def _web_search(self, query: str) -> List[Dict[str, Any]]:
-        """Enhanced web search with better error handling"""
+        """Enhanced web search using Brave API only"""
         try:
-            # Use Semantic Scholar for academic content
-            if any(word in query.lower() for word in ['academic', 'scholarly', 'journal']):
-                return await self._semantic_scholar_search(query)
-            else:
-                # Fallback to basic web search
-                from tools import web_search
-                result = web_search(query, max_results=5)
-                return self._parse_search_results(result)
+            # Always use Brave search from tools.py
+            from tools import web_search
+            result = web_search(query, max_results=5)
+            return self._parse_search_results(result)
         except Exception as e:
             logging.error(f"Error in web search: {e}")
             return []
-    
-    async def _semantic_scholar_search(self, query: str) -> List[Dict[str, Any]]:
-        """Search academic papers via Semantic Scholar API"""
+
+    async def _podcast_search(self, query: str) -> List[Dict[str, Any]]:
+        """Search podcasts using NewPodcastSearcher"""
         try:
-            base_url = "https://api.semanticscholar.org/graph/v1"
-            params = {
-                'query': query,
-                'fields': 'title,abstract,authors,year,citationCount,url',
-                'limit': 5
-            }
+            # Use asyncio.to_thread to run the synchronous search in a separate thread
+            results = await asyncio.to_thread(self.podcast_searcher.search_all, query)
             
-            response = requests.get(f"{base_url}/paper/search", params=params)
-            response.raise_for_status()
-            
-            results = []
-            for paper in response.json().get('data', []):
-                results.append({
-                    'title': paper.get('title', ''),
-                    'url': paper.get('url', ''),
-                    'description': paper.get('abstract', '')[:500],
-                    'authors': [author.get('name', '') for author in paper.get('authors', [])],
-                    'year': paper.get('year', ''),
-                    'citations': paper.get('citationCount', 0),
-                    'source_type': 'academic'
+            # Format results to match expected structure
+            formatted_results = []
+            for result in results:
+                formatted_results.append({
+                    'title': result.get('title', ''),
+                    'url': result.get('url', ''),
+                    'description': result.get('summary', '')[:500],
+                    'transcript_url': result.get('transcript_url', ''),
+                    'podcast_name': result.get('podcast_name', ''),
+                    'source_type': 'podcast'
                 })
             
-            return results
+            return formatted_results
             
         except Exception as e:
-            logging.error(f"Error in Semantic Scholar search: {e}")
+            logging.error(f"Error in podcast search: {e}")
             return []
+
+    async def _extract_citations(self, content: str) -> List[Dict[str, str]]:
+        """Extract citations from content"""
+        # Placeholder implementation - should be replaced with actual citation extraction logic
+        logging.warning("Citation extraction not implemented yet")
+        return []
+
+    async def _synthesize_insights(self, context: ResearchContext) -> Dict[str, Any]:
+        """Synthesize insights from research context"""
+        # Placeholder implementation - should be replaced with actual synthesis logic
+        logging.warning("Insight synthesis not implemented yet")
+        return {
+            'action': 'synthesize_insights',
+            'insights': {
+                'key_themes': {
+                    'historical_context': len([s for s in context.sources if 'context' in str(s).lower()]),
+                    'theological_implications': len([s for s in context.sources if 'theology' in str(s).lower()]),
+                    'scholarly_consensus': len([s for s in context.sources if 'scholar' in str(s).lower()])
+                }
+            }
+        }
+
+    async def _assess_quality(self, context: ResearchContext) -> Dict[str, Any]:
+        """Assess the quality of research findings"""
+        # Placeholder implementation - should be replaced with actual quality assessment logic
+        logging.warning("Quality assessment not implemented yet")
+        return {
+            'action': 'assess_quality',
+            'quality_score': context.quality_score,
+            'issues': [],
+            'suggestions': []
+        }
+
+    async def _identify_gaps(self, context: ResearchContext) -> Dict[str, Any]:
+        """Identify gaps in the research"""
+        # Placeholder implementation - should be replaced with actual gap identification logic
+        logging.warning("Gap identification not implemented yet")
+        return {
+            'action': 'identify_gaps',
+            'gaps': [],
+            'suggestions': []
+        }
     
     async def _generate_enhanced_report(self, context: ResearchContext) -> str:
         """Generate comprehensive report with validation results"""
@@ -455,6 +500,30 @@ class EnhancedAutonomousResearchAgent:
         )
         
         return basic_completion
+
+    async def _update_context(self, context: ResearchContext, result: Dict[str, Any]) -> ResearchContext:
+        """Update research context with new results"""
+        # Update sources if new sources were discovered
+        if 'new_sources' in result:
+            context.sources.extend(result['new_sources'])
+        
+        # Update insights if new insights were synthesized
+        if 'insights' in result:
+            context.insights.update(result['insights'])
+        
+        # Update quality score if provided
+        if 'quality_score' in result:
+            context.quality_score = result['quality_score']
+        
+        # Update completed criteria if provided
+        if 'completed_criteria' in result:
+            context.completed_criteria.extend(result['completed_criteria'])
+        
+        # Update validation results if provided
+        if 'validation_results' in result:
+            context.validation_results = result['validation_results']
+        
+        return context
 
 # Usage example
 async def main():
