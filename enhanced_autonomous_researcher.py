@@ -321,7 +321,27 @@ class EnhancedAutonomousResearchAgent:
         if action['action'] == 'discover_sources':
             return await self._discover_sources(action, context)
         elif action['action'] == 'fetch_content':
-            return await self._fetch_content(action, context)
+            # Extract URL from action parameters
+            url = action.get('url')
+            if not url:
+                return {'action': 'fetch_content', 'error': 'No URL provided'}
+                
+            # Fetch content
+            content = await self._fetch_content(url)
+            
+            # Add to scratchpad
+            context.add_to_scratchpad(
+                thought=f"Fetching content from {url}",
+                action="fetch_content",
+                result=f"Retrieved {len(content)} characters" if not content.startswith('Error') else f"Failed to fetch: {content}"
+            )
+            
+            return {
+                'action': 'fetch_content',
+                'url': url,
+                'content': content,
+                'success': not content.startswith('Error')
+            }
         elif action['action'] == 'synthesize_current_findings':
             return await self._synthesize_findings(context)
         
@@ -329,12 +349,12 @@ class EnhancedAutonomousResearchAgent:
     
     async def _validate_sources_batch(self, sources: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Validate multiple sources using validation tools"""
-        validator = CitationValidator()
         validated_sources = []
         
         for source in sources:
             if source.get('url'):
-                validation = validator.validate_url(source['url'])
+                # Use the agent's validate_url method
+                validation = await self._validate_url(source['url'])
                 source['validation'] = validation
                 validated_sources.append(source)
         
@@ -354,6 +374,24 @@ class EnhancedAutonomousResearchAgent:
         except Exception as e:
             logging.error(f"Error in web search: {e}")
             return []
+            
+    async def _fetch_content(self, url: str) -> str:
+        """Fetch content from a URL using tools.py"""
+        try:
+            from tools import fetch_content
+            return fetch_content(url)
+        except Exception as e:
+            logging.error(f"Error fetching content: {e}")
+            return f"Error: {str(e)}"
+            
+    async def _validate_url(self, url: str) -> Dict[str, Any]:
+        """Validate a URL using tools.py"""
+        try:
+            from tools import validate_url
+            return validate_url(url)
+        except Exception as e:
+            logging.error(f"Error validating URL: {e}")
+            return {"accessible": False, "error": str(e)}
 
     async def _podcast_search(self, query: str) -> List[Dict[str, Any]]:
         """Search podcasts using NewPodcastSearcher"""
