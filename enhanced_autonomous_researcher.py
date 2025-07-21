@@ -43,7 +43,7 @@ class ResearchGoal:
 
 @dataclass
 class ResearchContext:
-    """Enhanced context with task graph integration"""
+    """Enhanced context with task graph integration and scratchpad"""
     goal: ResearchGoal
     sources: List[Dict[str, Any]] = None
     insights: Dict[str, Any] = None
@@ -55,6 +55,7 @@ class ResearchContext:
     max_same_action_attempts: int = 3
     task_graph: Optional[ResearchGraph] = None
     validation_results: Dict[str, Any] = None
+    scratchpad: List[Dict[str, str]] = None  # Added scratchpad for agent reasoning
     
     def __post_init__(self):
         if self.sources is None:
@@ -65,6 +66,8 @@ class ResearchContext:
             self.completed_criteria = []
         if self.action_history is None:
             self.action_history = []
+        if self.scratchpad is None:  # Initialize scratchpad
+            self.scratchpad = []
             
     def add_action(self, action: str):
         """Add an action to the action history"""
@@ -78,6 +81,15 @@ class ResearchContext:
             if recent_actions.count(action) >= self.max_same_action_attempts:
                 return False
         return True
+        
+    def add_to_scratchpad(self, thought: str, action: str, result: str = ""):
+        """Add a reasoning step to the scratchpad"""
+        self.scratchpad.append({
+            "step": len(self.scratchpad) + 1,
+            "thought": thought,
+            "action": action,
+            "result": result
+        })
 
 class EnhancedAutonomousResearchAgent:
     """Enhanced agent with task graph and validation capabilities"""
@@ -196,23 +208,37 @@ class EnhancedAutonomousResearchAgent:
             await self._validate_research_content(context)
     
     async def _decide_next_action(self, context: ResearchContext) -> Dict[str, Any]:
-        """Enhanced decision making with task graph awareness"""
+        """Enhanced decision making with task graph awareness and scratchpad"""
         
         if context.failed_attempts >= 5:
             return {'action': 'complete', 'reason': 'max_attempts_reached'}
+        
+        # Add reasoning to scratchpad
+        thought = "Deciding next action based on research progress"
         
         # Check task graph for next steps
         if context.task_graph:
             ready_tasks = self.task_planner.get_ready_tasks(context.task_graph)
             if ready_tasks:
                 task = ready_tasks[0]
+                context.add_to_scratchpad(
+                    thought=thought,
+                    action="execute_task",
+                    result=f"Selected task: {task.tool} for {task.args.get('query', 'N/A')}"
+                )
                 return {
                     'action': 'execute_task',
                     'task': task
                 }
         
         # Fallback to original decision logic
-        return await self._legacy_decide_next_action(context)
+        legacy_action = await self._legacy_decide_next_action(context)
+        context.add_to_scratchpad(
+            thought=thought,
+            action=legacy_action.get('action', 'unknown'),
+            result=f"Using legacy logic: {legacy_action}"
+        )
+        return legacy_action
     
     async def _legacy_decide_next_action(self, context: ResearchContext) -> Dict[str, Any]:
         """Original decision logic for backward compatibility"""
@@ -229,13 +255,25 @@ class EnhancedAutonomousResearchAgent:
         return {'action': 'synthesize_current_findings'}
     
     async def _execute_action(self, action: Dict[str, Any], context: ResearchContext) -> Dict[str, Any]:
-        """Execute actions including task graph tasks"""
+        """Execute actions including task graph tasks with scratchpad logging"""
         
         if action['action'] == 'execute_task':
-            return await self._execute_task(action['task'], context)
+            result = await self._execute_task(action['task'], context)
+            context.add_to_scratchpad(
+                thought=f"Executing task: {action['task'].tool}",
+                action=action['action'],
+                result=f"Task completed with status: {result.get('task', {}).get('status', 'unknown')}"
+            )
+            return result
         
         # Handle legacy actions
-        return await self._execute_legacy_action(action, context)
+        result = await self._execute_legacy_action(action, context)
+        context.add_to_scratchpad(
+            thought=f"Executing legacy action: {action['action']}",
+            action=action['action'],
+            result=f"Legacy action completed: {result}"
+        )
+        return result
     
     async def _execute_task(self, task: Task, context: ResearchContext) -> Dict[str, Any]:
         """Execute a task from the task graph"""
@@ -384,7 +422,7 @@ class EnhancedAutonomousResearchAgent:
         }
     
     async def _generate_enhanced_report(self, context: ResearchContext) -> str:
-        """Generate comprehensive report with validation results"""
+        """Generate comprehensive report with validation results and scratchpad"""
         
         report = f"# Enhanced Research Report: {context.goal.topic}\n\n"
         report += f"**Research Mandate**: {context.goal.research_mandate}\n\n"
@@ -418,6 +456,12 @@ class EnhancedAutonomousResearchAgent:
             report += "\n## Validation Results\n"
             report += f"- **Hallucination Risk**: {context.validation_results.get('hallucination_risk', 'N/A')}\n"
             report += f"- **Citations Validated**: {len([c for c in context.validation_results.get('citations', []) if c.get('validated')])}\n"
+        
+        # Scratchpad
+        if context.scratchpad:
+            report += "\n## Agent Reasoning (Scratchpad)\n"
+            for entry in context.scratchpad:
+                report += f"{entry['step']}. **{entry['thought']}**\n   - Action: {entry['action']}\n   - Result: {entry['result']}\n"
         
         return report
     
@@ -502,26 +546,52 @@ class EnhancedAutonomousResearchAgent:
         return basic_completion
 
     async def _update_context(self, context: ResearchContext, result: Dict[str, Any]) -> ResearchContext:
-        """Update research context with new results"""
+        """Update research context with new results and log to scratchpad"""
         # Update sources if new sources were discovered
         if 'new_sources' in result:
             context.sources.extend(result['new_sources'])
+            context.add_to_scratchpad(
+                thought="Updating context with new sources",
+                action="update_context",
+                result=f"Added {len(result['new_sources'])} new sources"
+            )
         
         # Update insights if new insights were synthesized
         if 'insights' in result:
             context.insights.update(result['insights'])
+            context.add_to_scratchpad(
+                thought="Updating context with new insights",
+                action="update_context",
+                result=f"Updated insights: {list(result['insights'].keys())}"
+            )
         
         # Update quality score if provided
         if 'quality_score' in result:
+            old_score = context.quality_score
             context.quality_score = result['quality_score']
+            context.add_to_scratchpad(
+                thought="Updating quality score",
+                action="update_context",
+                result=f"Quality score updated from {old_score:.2f} to {context.quality_score:.2f}"
+            )
         
         # Update completed criteria if provided
         if 'completed_criteria' in result:
             context.completed_criteria.extend(result['completed_criteria'])
+            context.add_to_scratchpad(
+                thought="Updating completed criteria",
+                action="update_context",
+                result=f"Completed criteria: {result['completed_criteria']}"
+            )
         
         # Update validation results if provided
         if 'validation_results' in result:
             context.validation_results = result['validation_results']
+            context.add_to_scratchpad(
+                thought="Updating validation results",
+                action="update_context",
+                result=f"Validation updated: {result['validation_results'].get('validation_passed', 'N/A')}"
+            )
         
         return context
 
