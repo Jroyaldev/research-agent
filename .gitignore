@@ -1,3 +1,7 @@
 .env
 .env.template
 .env.example
+
+# never commit byte-code
+__pycache__/
+*.pyc
