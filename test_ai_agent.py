@@ -5,7 +5,7 @@ Test script for AI Research Agent
 
 import asyncio
 import logging
-from ai_research_agent import AIResearchAgent
+from enhanced_autonomous_researcher import EnhancedAutonomousResearcher
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -23,7 +23,7 @@ async def test_ai_research_agent():
     
     try:
         # Create agent
-        agent = AIResearchAgent()
+        agent = EnhancedAutonomousResearcher()
         print("✅ AI Research Agent initialized successfully")
         
         # Test query
@@ -59,7 +59,7 @@ async def test_moonshot_connection():
     print("=" * 50)
     
     try:
-        from ai_research_agent import MoonshotClient
+        from moonshot_client import MoonshotClient
         
         client = MoonshotClient()
         print("✅ Moonshot client initialized")
@@ -70,7 +70,7 @@ async def test_moonshot_connection():
             {"role": "user", "content": "Say hello and confirm you're working."}
         ]
         
-        response = await client.chat_completion(messages)
+        response = await client.a_chat_completion(messages)
         
         if response and 'choices' in response:
             content = response['choices'][0]['message']['content']

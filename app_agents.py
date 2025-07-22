@@ -168,7 +168,7 @@ def health_check():
         }), 500
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5030))  # Changed default port to 5030
+    port = int(os.getenv('PORT', 5031))  # Changed default port to 5031
     debug = os.getenv('DEBUG', 'False').lower() == 'true'
     
     logger.info(f"Starting AI Research Agent server on port {port}")

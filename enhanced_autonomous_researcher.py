@@ -16,6 +16,8 @@ from bs4 import BeautifulSoup
 from task_graph import TaskPlanner, ResearchGraph, Task
 from validation_tools import CitationValidator, hallucination_check
 from podcast_search import NewPodcastSearcher
+from moonshot_client import MoonshotClient
+from typing import Union
 
 @dataclass
 class ResearchGoal:
@@ -96,11 +98,13 @@ class EnhancedAutonomousResearchAgent:
     
     def __init__(self):
         self.podcast_searcher = NewPodcastSearcher()
+        # Moonshot LLM client for all language tasks
+        self.llm = MoonshotClient()
         self.tools = {
             'web_search': self._web_search,
             'podcast_search': self._podcast_search,
             'extract_citations': self._extract_citations,
-            'validate_source': self._validate_source,
+            'validate_source': self._validate_url,
             'synthesize_insights': self._synthesize_insights,
             'assess_quality': self._assess_quality,
             'identify_gaps': self._identify_gaps,
@@ -109,8 +113,11 @@ class EnhancedAutonomousResearchAgent:
         self.task_planner = TaskPlanner()
         self.validator = CitationValidator()
         
-    async def conduct_research(self, goal: ResearchGoal) -> Dict[str, Any]:
+    async def conduct_research(self, goal: Union[ResearchGoal, str]) -> Dict[str, Any]:
         """Main research loop with task graph integration"""
+        # If user passed a simple topic string, wrap it
+        if isinstance(goal, str):
+            goal = ResearchGoal(topic=goal, research_mandate="general inquiry")
         context = ResearchContext(goal=goal)
         
         # Create task graph for structured planning
@@ -154,6 +161,8 @@ class EnhancedAutonomousResearchAgent:
             'context': context,
             'iterations': iteration,
             'quality_score': context.quality_score,
+        'query': context.goal.topic,
+        'sources_found': len(context.sources),
             'validation_results': context.validation_results
         }
     
@@ -231,14 +240,41 @@ class EnhancedAutonomousResearchAgent:
                     'task': task
                 }
         
-        # Fallback to original decision logic
-        legacy_action = await self._legacy_decide_next_action(context)
+        # Check for gaps instead of legacy fallback
+        gap_result = await self._identify_gaps(context)
         context.add_to_scratchpad(
             thought=thought,
-            action=legacy_action.get('action', 'unknown'),
-            result=f"Using legacy logic: {legacy_action}"
+            action="identify_gaps",
+            result=f"Found {len(gap_result['gaps'])} gaps"
         )
-        return legacy_action
+        if gap_result['suggestions']:
+            # Add new tasks from suggestions
+            last_task_id = context.task_graph.tasks[-1].id if context.task_graph.tasks else ""
+            for idx, sugg in enumerate(gap_result['suggestions']):
+                new_task = Task(
+                    id=f"ADDED_{idx}_{datetime.now().isoformat()}",
+                    tool="web_search",
+                    args={"query": sugg['query']},
+                    depends_on=[last_task_id] if last_task_id else []
+                )
+                context.task_graph.tasks.append(new_task)
+            # After adding, get new ready tasks
+            ready_tasks = self.task_planner.get_ready_tasks(context.task_graph)
+            if ready_tasks:
+                task = ready_tasks[0]
+                return {
+                    'action': 'execute_task',
+                    'task': task
+                }
+        else:
+            # No gaps, synthesize or complete
+            if context.can_perform_action('synthesize_current_findings'):
+                return {'action': 'synthesize_current_findings'}
+            else:
+                return {'action': 'complete', 'reason': 'no_gaps_found'}
+
+        # If all else fails, complete
+        return {'action': 'complete', 'reason': 'research_complete'}
     
     async def _legacy_decide_next_action(self, context: ResearchContext) -> Dict[str, Any]:
         """Original decision logic for backward compatibility"""
@@ -262,7 +298,7 @@ class EnhancedAutonomousResearchAgent:
             context.add_to_scratchpad(
                 thought=f"Executing task: {action['task'].tool}",
                 action=action['action'],
-                result=f"Task completed with status: {result.get('task', {}).get('status', 'unknown')}"
+                result=f"Task completed with status: {result['task'].status if 'task' in result else 'unknown'}"
             )
             return result
         
@@ -343,7 +379,8 @@ class EnhancedAutonomousResearchAgent:
                 'success': not content.startswith('Error')
             }
         elif action['action'] == 'synthesize_current_findings':
-            return await self._synthesize_findings(context)
+            # Redirect legacy synthesis to the new Moonshot-powered insights
+            return await self._synthesize_insights(context)
         
         return {'action': 'unknown_action'}
     
@@ -424,63 +461,193 @@ class EnhancedAutonomousResearchAgent:
         return []
 
     async def _synthesize_insights(self, context: ResearchContext) -> Dict[str, Any]:
-        """Synthesize insights from research context"""
-        # Placeholder implementation - should be replaced with actual synthesis logic
-        logging.warning("Insight synthesis not implemented yet")
-        return {
-            'action': 'synthesize_insights',
-            'insights': {
-                'key_themes': {
-                    'historical_context': len([s for s in context.sources if 'context' in str(s).lower()]),
-                    'theological_implications': len([s for s in context.sources if 'theology' in str(s).lower()]),
-                    'scholarly_consensus': len([s for s in context.sources if 'scholar' in str(s).lower()])
-                }
-            }
-        }
+        """Synthesize insights using Moonshot LLM for high-quality summaries and theme detection"""
+
+        insights = {"key_themes": {}, "summaries": {}}
+        themes = [
+            "historical context",
+            "theological implications",
+            "scholarly consensus",
+            "contemporary application",
+        ]
+        for theme in themes:
+            insights["key_themes"][theme.replace(" ", "_")] = 0
+
+        # Limit per-loop concurrency to avoid hitting rate limits
+        async def process_source(src: Dict[str, Any]):
+            url = src.get("url")
+            if not url:
+                return
+            content = await self._fetch_content(url)
+            if content.startswith("Error"):
+                return
+            # Summarize via Moonshot (truncate to 4000 chars for prompt safety)
+            prompt_msgs = [
+                {"role": "system", "content": "You are a scholarly research assistant."},
+                {
+                    "role": "user",
+                    "content": (
+                        "Summarize the following source in 3-4 concise, academic sentences, "
+                        "highlighting key arguments and perspectives.\n\n" + content[:4000]
+                    ),
+                },
+            ]
+            summary = await self.llm.a_chat_completion_text(prompt_msgs, temperature=0.3)
+            insights["summaries"][url] = summary
+            lowercase = content.lower()
+            for theme in themes:
+                if theme in lowercase:
+                    insights["key_themes"][theme.replace(" ", "_")] += 1
+
+        await asyncio.gather(*(process_source(s) for s in context.sources[:10]))
+
+        return {"action": "synthesize_insights", "insights": insights}
 
     async def _assess_quality(self, context: ResearchContext) -> Dict[str, Any]:
-        """Assess the quality of research findings"""
-        # Placeholder implementation - should be replaced with actual quality assessment logic
-        logging.warning("Quality assessment not implemented yet")
+        """Assess the quality of research findings based on multiple criteria"""
+        issues = []
+        suggestions = []
+        
+        # Criteria weights
+        weights = {
+            'source_count': 0.2,
+            'source_validation': 0.3,
+            'perspective_coverage': 0.3,
+            'insight_depth': 0.2
+        }
+        
+        # 1. Source count score
+        source_count_score = min(len(context.sources) / context.goal.min_sources, 1.0)
+        if source_count_score < 1.0:
+            issues.append(f"Insufficient sources: {len(context.sources)}/{context.goal.min_sources}")
+        
+        # 2. Source validation score
+        validated_sources = [s for s in context.sources if s.get('validation', {}).get('accessible')]
+        validation_score = len(validated_sources) / max(len(context.sources), 1)
+        if validation_score < 0.8:
+            issues.append(f"Low source validation rate: {validation_score:.2f}")
+            suggestions.append("Improve source validation by re-checking or finding new sources.")
+
+        # 3. Perspective coverage score
+        required_perspectives = set(context.goal.required_perspectives)
+        covered_perspectives = set(s.get('perspective', 'unknown') for s in context.sources)
+        perspective_score = len(required_perspectives & covered_perspectives) / len(required_perspectives)
+        if perspective_score < 1.0:
+            issues.append(f"Missing perspectives: {', '.join(required_perspectives - covered_perspectives)}")
+
+        # 4. Insight depth score (simple version)
+        insight_depth_score = min(len(context.insights.get('summaries', {})) / max(len(context.sources), 1), 1.0)
+        if insight_depth_score < 0.7:
+            issues.append("Low insight depth: many sources are not summarized.")
+
+        # Calculate final quality score
+        quality_score = (
+            source_count_score * weights['source_count'] +
+            validation_score * weights['source_validation'] +
+            perspective_score * weights['perspective_coverage'] +
+            insight_depth_score * weights['insight_depth']
+        )
+        
         return {
             'action': 'assess_quality',
-            'quality_score': context.quality_score,
-            'issues': [],
-            'suggestions': []
+            'quality_score': min(quality_score, 1.0),
+            'issues': issues,
+            'suggestions': suggestions
         }
 
     async def _identify_gaps(self, context: ResearchContext) -> Dict[str, Any]:
-        """Identify gaps in the research"""
-        # Placeholder implementation - should be replaced with actual gap identification logic
-        logging.warning("Gap identification not implemented yet")
+        """Identify gaps in the research based on required perspectives and current insights"""
+        gaps = []
+        suggestions = []
+
+        # Check for missing perspectives
+        current_perspectives = set()
+        for source in context.sources:
+            if 'perspective' in source:  # Assuming sources may have perspective metadata
+                current_perspectives.add(source['perspective'])
+
+        missing_perspectives = set(context.goal.required_perspectives) - current_perspectives
+        if missing_perspectives:
+            gaps.append(f"Missing perspectives: {', '.join(missing_perspectives)}")
+            for perspective in missing_perspectives:
+                suggestions.append({
+                    'action': 'discover_sources',
+                    'strategy': 'targeted_search',
+                    'query': f"{context.goal.topic} {perspective} perspective scholarly"
+                })
+
+        # Check for low coverage in key themes
+        if context.insights.get('key_themes'):
+            for theme, count in context.insights['key_themes'].items():
+                if count < 2:  # Arbitrary threshold for sufficient coverage
+                    gaps.append(f"Low coverage in {theme}: only {count} sources")
+                    suggestions.append({
+                        'action': 'discover_sources',
+                        'strategy': 'theme_focused',
+                        'query': f"{context.goal.topic} {theme} analysis"
+                    })
+
+        # Check source count
+        if len(context.sources) < context.goal.min_sources:
+            gaps.append(f"Insufficient sources: {len(context.sources)} found, need at least {context.goal.min_sources}")
+            suggestions.append({
+                'action': 'discover_sources',
+                'strategy': 'broad_search',
+                'query': f"{context.goal.topic} scholarly sources"
+            })
+
         return {
             'action': 'identify_gaps',
-            'gaps': [],
-            'suggestions': []
+            'gaps': gaps,
+            'suggestions': suggestions
         }
-    
+
     async def _generate_enhanced_report(self, context: ResearchContext) -> str:
-        """Generate comprehensive report with validation results and scratchpad"""
+        """Generate comprehensive report with narrative summaries and validation"""
         
         report = f"# Enhanced Research Report: {context.goal.topic}\n\n"
         report += f"**Research Mandate**: {context.goal.research_mandate}\n\n"
         report += f"**Quality Score**: {context.quality_score:.2f}\n\n"
-        report += f"**Sources Found**: {len(context.sources)}\n\n"
         
-        # Task graph summary
-        if context.task_graph:
-            report += f"**Task Graph**: {len(context.task_graph.tasks)} tasks completed\n\n"
-        
-        # Validation results
-        if context.validation_results:
-            report += f"**Validation**: {'✅ Passed' if context.validation_results.get('validation_passed') else '⚠️ Issues Found'}\n\n"
-        
-        # Key insights
+        # Executive Summary – generated by Moonshot
+        report += "## Executive Summary\n"
+        # Use Moonshot to craft a scholarly narrative
+        synthesis_prompt = [
+            {"role": "system", "content": "You are an academic researcher writing a literature review."},
+            {
+                "role": "user",
+                "content": (
+                    f"Write a 600-word scholarly synthesis on the topic '{context.goal.topic}'.\n"
+                    f"Key themes and counts: {context.insights.get('key_themes', {})}.\n"
+                    "Use an academic tone, multiple viewpoints, and cite sources inline as (Author, Year)."
+                ),
+            },
+        ]
+        try:
+            narrative = await self.llm.a_chat_completion_text(synthesis_prompt, temperature=0.4)
+        except Exception as e:
+            narrative = f"*LLM synthesis failed: {e}*"
+        report += narrative + "\n"
+
+        # Key Themes and Narratives
         if context.insights.get('key_themes'):
-            report += "## Key Insights\n"
+            report += "## Key Themes Analysis\n"
             for theme, count in context.insights['key_themes'].items():
-                report += f"- **{theme.replace('_', ' ').title()}**: {count} sources\n"
-        
+                if count > 0:
+                    theme_title = theme.replace('_', ' ').title()
+                    report += f"### {theme_title}\n"
+                    report += f"Found {count} sources discussing this theme.\n\n"
+                    
+                    # Add summaries for sources related to this theme
+                    theme_summaries = []
+                    for url, summary in context.insights.get('summaries', {}).items():
+                        if theme.replace('_', ' ') in summary.lower():
+                            source_title = next((s.get('title', 'Unknown') for s in context.sources if s.get('url') == url), "Unknown")
+                            theme_summaries.append(f"- **{source_title}**: {summary}")
+                    
+                    if theme_summaries:
+                        report += "\n".join(theme_summaries) + "\n\n"
+
         # Sources
         report += "\n## Sources\n"
         for i, source in enumerate(context.sources, 1):
@@ -495,11 +662,12 @@ class EnhancedAutonomousResearchAgent:
             report += f"- **Hallucination Risk**: {context.validation_results.get('hallucination_risk', 'N/A')}\n"
             report += f"- **Citations Validated**: {len([c for c in context.validation_results.get('citations', []) if c.get('validated')])}\n"
         
-        # Scratchpad
+        # Agent Reasoning (optional, for debugging)
         if context.scratchpad:
-            report += "\n## Agent Reasoning (Scratchpad)\n"
+            report += "\n<details>\n<summary>Agent Reasoning (Scratchpad)</summary>\n\n"
             for entry in context.scratchpad:
-                report += f"{entry['step']}. **{entry['thought']}**\n   - Action: {entry['action']}\n   - Result: {entry['result']}\n"
+                report += f"**Step {entry['step']}**: {entry['thought']}\n- **Action**: {entry['action']}\n- **Result**: {entry['result']}\n\n"
+            report += "</details>\n"
         
         return report
     
@@ -519,30 +687,14 @@ class EnhancedAutonomousResearchAgent:
         """Filter and validate sources"""
         validated_sources = []
         for source in sources:
-            validation = await self._validate_source(source)
-            if validation['valid']:
-                validated_sources.append(source)
+            if source.get('url'):
+                validation = await self._validate_url(source['url'])
+                if validation.get('accessible'):
+                    source['validation'] = validation
+                    validated_sources.append(source)
         return validated_sources
     
-    async def _validate_source(self, source: Dict[str, Any]) -> Dict[str, Any]:
-        """Basic source validation"""
-        return {
-            'valid': bool(source.get('url') and source.get('title')),
-            'credibility_score': 0.9 if source.get('source_type') == 'academic' else 0.5
-        }
-    
-    async def _synthesize_findings(self, context: ResearchContext) -> Dict[str, Any]:
-        """Legacy synthesis"""
-        return {
-            'action': 'synthesize_current_findings',
-            'insights': {
-                'key_themes': {
-                    'historical_context': len([s for s in context.sources if 'context' in str(s).lower()]),
-                    'theological_implications': len([s for s in context.sources if 'theology' in str(s).lower()]),
-                    'scholarly_consensus': len([s for s in context.sources if 'scholar' in str(s).lower()])
-                }
-            }
-        }
+
     
     def _parse_search_results(self, search_result: str) -> List[Dict[str, Any]]:
         """Parse search results"""
@@ -647,6 +799,9 @@ async def main():
     
     result = await agent.conduct_research(goal)
     print(result['final_report'])
+
+# Legacy alias for backward compatibility
+EnhancedAutonomousResearcher = EnhancedAutonomousResearchAgent
 
 if __name__ == "__main__":
     asyncio.run(main())

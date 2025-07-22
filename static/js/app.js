@@ -125,6 +125,10 @@ class ResearchApp {
     }
     
     updateAgentDisplay(data) {
+    // Update step feed if present
+    if (data.steps && Array.isArray(data.steps)) {
+        this.updateStepFeed(data.steps);
+    }
         const statusSection = this.elements.statusSection;
         const agents = data.agents || [];
         const currentAgent = data.current_agent;
@@ -291,12 +295,23 @@ class ResearchApp {
     }
     
     showStatus(query) {
+    // Disable input during study
+    this.elements.queryInput.setAttribute('disabled', 'true');
+    this.elements.researchBtn.setAttribute('disabled', 'true');
+    this.elements.clearBtn.setAttribute('disabled', 'true');
         this.hideAllSections();
         this.elements.currentQuery.textContent = query;
         this.elements.statusSection.classList.remove('hidden');
+    // Clear any previous steps
+    const feed = document.getElementById('step-feed');
+    if (feed) feed.innerHTML = '';
     }
     
     showResult(result) {
+    // Re-enable input after completion
+    this.elements.queryInput.removeAttribute('disabled');
+    this.elements.researchBtn.removeAttribute('disabled');
+    this.elements.clearBtn.removeAttribute('disabled');
         this.hideAllSections();
         this.elements.resultText.innerHTML = this.renderMarkdown(result);
         this.elements.resultSection.classList.remove('hidden');
@@ -306,12 +321,28 @@ class ResearchApp {
     }
     
     showError(message) {
+    // Re-enable input on error
+    this.elements.queryInput.removeAttribute('disabled');
+    this.elements.researchBtn.removeAttribute('disabled');
+    this.elements.clearBtn.removeAttribute('disabled');
         this.hideAllSections();
         document.getElementById('error-text').textContent = message;
         this.elements.errorSection.classList.remove('hidden');
     }
     
-    hideAllSections() {
+    updateStepFeed(steps) {
+    const feed = document.getElementById('step-feed');
+    if (!feed) return;
+    feed.innerHTML = '';
+    steps.forEach(step => {
+        const div = document.createElement('div');
+        div.className = 'step';
+        div.textContent = step;
+        feed.appendChild(div);
+    });
+}
+
+hideAllSections() {
         this.elements.statusSection.classList.add('hidden');
         this.elements.resultSection.classList.add('hidden');
         this.elements.errorSection.classList.add('hidden');

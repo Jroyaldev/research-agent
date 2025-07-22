@@ -16,7 +16,7 @@ A powerful AI-powered research system using Moonshot Kimi model for autonomous r
 
 ### Core Components
 
-1. **AI Research Coordinator** (`ai_research_agent.py`)
+1. **AI Research Coordinator** (`enhanced_autonomous_researcher.py`)
    - Uses Moonshot Kimi model for autonomous decision-making
    - Plans research strategies based on query analysis
    - Orchestrates tool usage and research flow
@@ -144,9 +144,9 @@ The system uses the Moonshot Kimi model to:
 
 ### Basic Research
 ```python
-from ai_research_agent import AIResearchAgent
+from enhanced_autonomous_researcher import EnhancedAutonomousResearchAgent
 
-agent = AIResearchAgent()
+agent = EnhancedAutonomousResearchAgent()
 result = await agent.conduct_research("What are the latest developments in quantum computing?")
 print(result['final_report'])
 ```

@@ -1,17 +1,18 @@
 :root {
-    --primary: #667eea;
-    --primary-dark: #5a6fd8;
-    --secondary: #f093fb;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --error: #ef4444;
-    --bg: #0f172a;
-    --bg-card: #1e293b;
-    --bg-input: #334155;
-    --text: #f8fafc;
-    --text-muted: #94a3b8;
-    --border: #475569;
-    --shadow: rgba(0, 0, 0, 0.25);
+    /* Modern neutral palette */
+    --primary: #0A84FF;
+    --primary-dark: #0066CC;
+    --secondary: #3C99FF;
+    --success: #12B76A;
+    --warning: #FDB022;
+    --error: #F04438;
+    --bg: #F8F9FA;
+    --bg-card: #FFFFFF;
+    --bg-input: #F1F3F5;
+    --text: #1E2022;
+    --text-muted: #6C737F;
+    --border: #D0D5DD;
+    --shadow: rgba(16, 24, 40, 0.06);
     --gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
 }
 
@@ -24,13 +25,10 @@
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg);
+    background-image: linear-gradient(180deg, #FFFFFF 0%, #F4F7FA 100%);
     color: var(--text);
     line-height: 1.6;
     min-height: 100vh;
-    background-image: 
-        radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(240, 147, 251, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 40% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 50%);
 }
 
 .container {
@@ -369,6 +367,39 @@ textarea::placeholder {
 
 .error-content p {
     color: var(--text-muted);
+}
+
+.step-feed {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.step-feed .step {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    opacity: 0;
+    transform: translateY(8px);
+    animation: stepIn 0.4s forwards;
+}
+
+@keyframes stepIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+textarea[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Footer */
