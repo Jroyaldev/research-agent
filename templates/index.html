@@ -7,10 +7,22 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 </head>
 <body>
     <div class="container">
-        <header class="header">
+        <button class="hamburger" id="hamburger">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+        <div class="drawer-overlay" id="drawer-overlay"></div>
+        <nav class="drawer" id="drawer">
+            <a href="#about">About</a>
+            <a href="#docs">Documentation</a>
+            <a href="#contact">Contact</a>
+        </nav>
+        <header class="header fade-in">
             <div class="header-content">
                 <div class="logo">
                     <i class="fas fa-brain"></i>
@@ -110,5 +122,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
 </body>
 </html>

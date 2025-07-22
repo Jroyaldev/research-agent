@@ -192,8 +192,8 @@ class ResearchApp {
     updateProgressBar(percent) {
         const progressBar = document.querySelector('.progress-fill');
         if (progressBar) {
-            progressBar.style.width = `${percent}%`;
-            progressBar.style.transition = 'width 0.5s ease';
+            progressBar.style.transform = `scaleX(${Math.min(1, Math.max(0, percent / 100))})`;
+            progressBar.style.transition = 'transform 0.5s ease';
         }
     }
     
